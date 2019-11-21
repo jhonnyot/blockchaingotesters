@@ -1,51 +1,32 @@
 package main
 
 import (
-	"bytes"
+	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
+	"net"
 	"strconv"
 	"time"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
-const url = "http://localhost:8080"
-
-func postRequest(dificuldade int) error {
-	rand.Seed(time.Now().UnixNano())
-	dados := rand.Intn(1e6)
-	reqJSON := []byte(`{"Dados":` + strconv.Itoa(dados) + `, "Dificuldade":` + strconv.Itoa(dificuldade) + `}`)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 0 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println("Resposta: " + resp.Status)
-	//fmt.Println("Corpo: ", string(body))
-	return nil
-}
-
-func getRequest() {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	spew.Dump(resp)
-}
-
 func main() {
+	i := 0
 	for {
-		milis := rand.Intn(99)
-		secs := rand.Intn(60)
-		t := (time.Duration(secs) * time.Second) + (time.Duration(milis) * time.Millisecond)
-		// go postRequest()
-		time.Sleep(t)
-	}
+		conn, err := net.Dial("tcp", "127.0.0.1:9000")
 
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		source := rand.NewSource(time.Now().Unix())
+		numero := rand.New(source)
+		fmt.Fprintf(conn, strconv.Itoa((numero.Int() % 1e8)))
+		fmt.Fprintf(conn, strconv.Itoa((numero.Int() % 1e8)))
+
+		i := i + 1
+
+		fmt.Printf("%d", i)
+
+		time.Sleep(15 * time.Second)
+	}
 }

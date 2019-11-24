@@ -18,6 +18,7 @@ func postRequest(dificuldade int) error {
 	dados := rand.Intn(1e6)
 	reqJSON := []byte(`{"Dados":` + strconv.Itoa(dados) + `, "Dificuldade":` + strconv.Itoa(dificuldade) + `}`)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
+	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 0 * time.Second}
 	resp, err := client.Do(req)

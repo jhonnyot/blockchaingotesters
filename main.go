@@ -83,6 +83,50 @@ func (cart Carteira) geraBloco(blocoAnterior Bloco) (Bloco, error) {
 	return novoBloco, nil
 }
 
+func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
+	rand.Seed(time.Now().Unix())
+	t := Transacao{}
+	mutexValor.Lock()
+	c := carteiras[rand.Intn(len(carteiras))]
+	if (c.ID != cart.ID) && ((cart.Currency - valorRetidoEsperandoTx[cart.ID.String()]) > 0) {
+		valor := rand.Intn(cart.Currency - valorRetidoEsperandoTx[cart.ID.String()])
+		if valor > 0 {
+			valorRetidoEsperandoTx[cart.ID.String()] += valor
+			t.ID = uuid.New()
+			t.IDCarteiraDestino = c.ID
+			t.IDCarteiraOrigem = cart.ID
+			t.Currency = valor
+			mutexValor.Unlock()
+			return t
+		}
+	}
+	mutexValor.Unlock()
+	return t
+}
+
+func (cart *Carteira) atualizaCarteira() {
+	// chain = getRequest()
+	// if (!cmp.Equal(chain, cart.blockchain)) {
+	// 	if (len(chain) >)
+	// }
+	for _, blc := range Blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
+		mutexValor.Lock()
+		blocosConsolidadosCurrency[cart.ID.String()]++
+		cart.Currency -= valorRetidoEsperandoTx[cart.ID.String()]
+		valorRetidoEsperandoTx[cart.ID.String()] = 0
+		mutexValor.Unlock()
+		if blc.Minerador == cart.ID.String() {
+			cart.Currency += 100
+		}
+		for _, tsc := range blc.Transacoes {
+			switch id := cart.ID; id {
+			case tsc.IDCarteiraDestino:
+				cart.Currency += tsc.Currency
+			}
+		}
+	}
+}
+
 func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 	if blocoAnterior.Indice+1 != novoBloco.Indice {
 		return false

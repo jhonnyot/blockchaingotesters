@@ -18,16 +18,17 @@ import (
 
 //carteira
 type Carteira struct {
-	ID     uuid.UUID `json:"id"`
-	Stakes []Stake   `json:"stakes"`
+	ID       uuid.UUID
+	Stakes   []Stake
+	Currency int
 }
 
 //stake
 type Stake struct {
-	ID                uuid.UUID `json:"id"`
-	IDCarteiraOrigem  uuid.UUID `json:"idcarteira"`
-	IDCarteiraDestino uuid.UUID `json:"dados"`
-	Tokens            int       `json:"tokens"`
+	ID                uuid.UUID
+	IDCarteiraOrigem  uuid.UUID
+	IDCarteiraDestino uuid.UUID
+	Currency          int
 	Sent              bool
 }
 

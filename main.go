@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	wr "github.com/mroth/weightedrand"
 )
@@ -196,6 +197,41 @@ func (cart *Carteira) geraStake(carteiras []*Carteira) Stake {
 	}
 	mutexValor.Unlock()
 	return t
+}
+
+func insertBloco(novoBloco Bloco) bool {
+	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, Blockchain[len(Blockchain)-1]) {
+		mutex.Lock()
+		Blockchain = append(Blockchain, novoBloco)
+		limpaTransacoes()
+		mutexBC.Unlock()
+		return true
+	}
+	return false
+}
+
+func limpaStakes() {
+	mapTransacoes := make(map[uuid.UUID]Transacao)
+	for _, t := range transactions {
+		mapTransacoes[t.ID] = t
+	}
+	blocos := 0
+	for _, bloco := range Blockchain[blocosConsolidadosTX:] {
+		blocos++
+		for _, trans := range bloco.Transacoes {
+			for _, tfila := range transactions {
+				if trans.ID == tfila.ID {
+					delete(mapTransacoes, tfila.ID)
+				}
+			}
+		}
+	}
+	blocosConsolidadosTX += blocos
+	txs := make([]Transacao, 0, len(mapTransacoes))
+	for _, tx := range mapTransacoes {
+		txs = append(txs, tx)
+	}
+	transactions = txs
 }
 
 func main() {

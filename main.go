@@ -12,6 +12,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
+	cmp "github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	wr "github.com/mroth/weightedrand"
 )
@@ -150,10 +151,8 @@ func escolheValidador() {
 				choices = append(choices, wr.NewChoice(k, uint(v)))
 			}
 			chooser, _ := wr.NewChooser(choices...)
-			mutex.Lock()
 			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string))
-			Blockchain = append(Blockchain, novoBloco)
-			mutex.Unlock()
+			_ = insertBloco(novoBloco)
 		}
 	}
 }
@@ -203,23 +202,23 @@ func insertBloco(novoBloco Bloco) bool {
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, Blockchain[len(Blockchain)-1]) {
 		mutex.Lock()
 		Blockchain = append(Blockchain, novoBloco)
-		limpaTransacoes()
-		mutexBC.Unlock()
+		limpaStakes()
+		mutex.Unlock()
 		return true
 	}
 	return false
 }
 
 func limpaStakes() {
-	mapTransacoes := make(map[uuid.UUID]Transacao)
-	for _, t := range transactions {
+	mapTransacoes := make(map[uuid.UUID]Stake)
+	for _, t := range stakes {
 		mapTransacoes[t.ID] = t
 	}
 	blocos := 0
 	for _, bloco := range Blockchain[blocosConsolidadosTX:] {
 		blocos++
-		for _, trans := range bloco.Transacoes {
-			for _, tfila := range transactions {
+		for _, trans := range bloco.Dados {
+			for _, tfila := range stakes {
 				if trans.ID == tfila.ID {
 					delete(mapTransacoes, tfila.ID)
 				}
@@ -227,11 +226,11 @@ func limpaStakes() {
 		}
 	}
 	blocosConsolidadosTX += blocos
-	txs := make([]Transacao, 0, len(mapTransacoes))
+	txs := make([]Stake, 0, len(mapTransacoes))
 	for _, tx := range mapTransacoes {
 		txs = append(txs, tx)
 	}
-	transactions = txs
+	stakes = txs
 }
 
 func main() {

@@ -8,12 +8,11 @@ import (
 	// "fmt"
 
 	"math/rand"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
+	wr "github.com/mroth/weightedrand"
 )
 
 //carteira
@@ -29,7 +28,6 @@ type Stake struct {
 	IDCarteiraOrigem  uuid.UUID
 	IDCarteiraDestino uuid.UUID
 	Currency          int
-	Sent              bool
 }
 
 type Bloco struct {
@@ -42,11 +40,14 @@ type Bloco struct {
 }
 
 var Blockchain []Bloco
-var tempBlocos []Bloco
-var filaDeBlocos []Bloco
 var stakes []Stake
 var validadores = make(map[string]int)
 var anunciador = make(chan string)
+var mutexValor = &sync.Mutex{}
+var mutexStks = &sync.Mutex{}
+var blocosConsolidadosTX = 0
+var blocosConsolidadosCurrency = make(map[string]int)
+var valorRetidoEsperandoTx = make(map[string]int)
 
 //sincronizador; garante não-concorrência nas adições de blocos
 var mutex = &sync.Mutex{}
@@ -60,15 +61,11 @@ func calculaHash(s string) string {
 }
 
 func calculaHashBloco(bloco Bloco) string {
-	dadosStr := 0
-	for _, stk := range bloco.Dados {
-		dadosStr += stk.Dados
-	}
-	totalDados := string(bloco.Indice) + bloco.Timestamp + string(bloco.Dados) + bloco.HashAnt
+	totalDados := string(bloco.Indice) + bloco.Timestamp + /*string(bloco.Dados) +*/ bloco.HashAnt
 	return calculaHash(totalDados)
 }
 
-func (cart Carteira) geraBloco(blocoAnterior Bloco) (Bloco, error) {
+func geraBloco(blocoAnterior Bloco, validador string) (Bloco, error) {
 	var novoBloco Bloco
 
 	t := time.Now()
@@ -78,50 +75,30 @@ func (cart Carteira) geraBloco(blocoAnterior Bloco) (Bloco, error) {
 	novoBloco.Dados = stakes
 	novoBloco.HashAnt = blocoAnterior.Hash
 	novoBloco.Hash = calculaHashBloco(novoBloco)
-	novoBloco.Validador = cart.ID.String()
+	novoBloco.Validador = validador
 
 	return novoBloco, nil
 }
 
-func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
-	rand.Seed(time.Now().Unix())
-	t := Transacao{}
-	mutexValor.Lock()
-	c := carteiras[rand.Intn(len(carteiras))]
-	if (c.ID != cart.ID) && ((cart.Currency - valorRetidoEsperandoTx[cart.ID.String()]) > 0) {
-		valor := rand.Intn(cart.Currency - valorRetidoEsperandoTx[cart.ID.String()])
-		if valor > 0 {
-			valorRetidoEsperandoTx[cart.ID.String()] += valor
-			t.ID = uuid.New()
-			t.IDCarteiraDestino = c.ID
-			t.IDCarteiraOrigem = cart.ID
-			t.Currency = valor
-			mutexValor.Unlock()
-			return t
-		}
-	}
-	mutexValor.Unlock()
-	return t
-}
-
 func (cart *Carteira) atualizaCarteira() {
-	// chain = getRequest()
-	// if (!cmp.Equal(chain, cart.blockchain)) {
-	// 	if (len(chain) >)
-	// }
 	for _, blc := range Blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
 		mutexValor.Lock()
 		blocosConsolidadosCurrency[cart.ID.String()]++
 		cart.Currency -= valorRetidoEsperandoTx[cart.ID.String()]
 		valorRetidoEsperandoTx[cart.ID.String()] = 0
 		mutexValor.Unlock()
-		if blc.Minerador == cart.ID.String() {
-			cart.Currency += 100
+		if blc.Validador == cart.ID.String() {
+			tip := 0
+			for _, stk := range blc.Dados {
+				tip += stk.Currency
+			}
+			tip = tip / 10
+			cart.Currency += tip
 		}
-		for _, tsc := range blc.Transacoes {
+		for _, stake := range blc.Dados {
 			switch id := cart.ID; id {
-			case tsc.IDCarteiraDestino:
-				cart.Currency += tsc.Currency
+			case stake.IDCarteiraDestino:
+				cart.Currency += stake.Currency
 			}
 		}
 	}
@@ -143,68 +120,41 @@ func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 
 func escolheValidador() {
 	spew.Dump("Validando")
-	go func() {
-		mutex.Lock()
-		for _, candidato := range filaDeBlocos {
-			tempBlocos = append(tempBlocos, candidato)
-		}
-		filaDeBlocos = []Bloco{}
-		mutex.Unlock()
-	}()
-	spew.Dump(filaDeBlocos)
-	time.Sleep(3 * time.Second)
-	mutex.Lock()
-	temp := tempBlocos
-	mutex.Unlock()
+	// go func() {
+	// 	mutex.Lock()
+	// 	for _, candidato := range filaDeBlocos {
+	// 		tempBlocos = append(tempBlocos, candidato)
+	// 	}
+	// 	filaDeBlocos = []Bloco{}
+	// 	mutex.Unlock()
+	// }()
+	// spew.Dump(filaDeBlocos)
+	// mutexTemp.Lock()
+	// temp := tempBlocos
+	// mutexTemp.Unlock()
 
-	loteria := []string{}
-	if len(temp) > 0 {
-		//percorre o slice de blocos procurando validadores únicos
-	EXTERNO:
-		for _, bloco := range temp {
-			for _, node := range loteria {
-				if bloco.Validador == node {
-					continue EXTERNO
-				}
-			}
-
-			//persiste validadores
-			mutex.Lock()
-			setValidadores := validadores
-			mutex.Unlock()
-
-			//para cada token do validador na stake, insere a identificacao deste validador na loteria
-			k, ok := setValidadores[bloco.Validador]
-			if ok {
-				for i := 0; i < k; i++ {
-					loteria = append(loteria, bloco.Validador)
-				}
-			}
+	loteria := make(map[string]int)
+	if len(stakes) > 0 {
+		for _, stk := range stakes {
+			loteria[stk.IDCarteiraOrigem.String()] = stk.Currency
 		}
 
 		//escolhe um vencedor aleatório
 		if len(loteria) > 0 {
-			source := rand.NewSource(time.Now().Unix())
-			numero := rand.New(source)
-			vencedor := loteria[numero.Intn(len(loteria))]
-
-			for _, bloco := range temp {
-				if bloco.Validador == vencedor {
-					mutex.Lock()
-					Blockchain = append(Blockchain, bloco)
-					delete(validadores, bloco.Validador)
-					loteria = []string{}
-					spew.Dump(Blockchain)
-					mutex.Unlock()
-					break
-				}
+			rand.Seed(time.Now().UTC().UnixNano())
+			// numero := rand.New(source)
+			// vencedor := loteria[numero.Intn(len(loteria))]
+			var choices []wr.Choice
+			for k, v := range loteria {
+				choices = append(choices, wr.NewChoice(k, uint(v)))
 			}
+			chooser, _ := wr.NewChooser(choices...)
+			mutex.Lock()
+			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string))
+			Blockchain = append(Blockchain, novoBloco)
+			mutex.Unlock()
 		}
-
 	}
-	mutex.Lock()
-	tempBlocos = []Bloco{}
-	mutex.Unlock()
 }
 
 func criaCarteira(inicial bool) (cart Carteira, ok bool) {
@@ -212,108 +162,66 @@ func criaCarteira(inicial bool) (cart Carteira, ok bool) {
 	numero := rand.New(source)
 	if inicial {
 		cart := Carteira{
-			ID: uuid.New(),
+			ID:       uuid.New(),
+			Currency: 100,
 		}
 		return cart, true
 	}
 	if numero.Intn(100) > 79 {
 		cart := Carteira{
-			ID: uuid.New(),
+			ID:       uuid.New(),
+			Currency: 100,
 		}
 		return cart, true
 	}
 	return Carteira{}, false
 }
 
-func (cart Carteira) geraStake(inicial bool) (stk Stake, ok bool) {
-	source := rand.NewSource(time.Now().Unix())
-	numero := rand.New(source)
-	if inicial {
-		stk := Stake{
-			ID:         uuid.New(),
-			IDCarteira: cart.ID,
-			Dados:      rand.Intn(1e5),
-			Tokens:     rand.Intn(1e4),
-			Sent:       false,
+func (cart *Carteira) geraStake(carteiras []*Carteira) Stake {
+	rand.Seed(time.Now().Unix())
+	t := Stake{}
+	mutexValor.Lock()
+	c := carteiras[rand.Intn(len(carteiras))]
+	if (c.ID != cart.ID) && ((cart.Currency - valorRetidoEsperandoTx[cart.ID.String()]) > 0) {
+		valor := rand.Intn(cart.Currency - valorRetidoEsperandoTx[cart.ID.String()])
+		if valor > 0 {
+			valorRetidoEsperandoTx[cart.ID.String()] += valor
+			t.ID = uuid.New()
+			t.IDCarteiraDestino = c.ID
+			t.IDCarteiraOrigem = cart.ID
+			t.Currency = valor
+			mutexValor.Unlock()
+			return t
 		}
-		return stk, true
 	}
-	if numero.Intn(100) > 79 {
-		stk := Stake{
-			ID:         uuid.New(),
-			IDCarteira: cart.ID,
-			Dados:      rand.Intn(1e5),
-			Tokens:     rand.Intn(1e4),
-			Sent:       false,
-		}
-		return stk, true
-	}
-	return Stake{}, false
-}
-
-func enviaStake(client *http.Client, req *http.Request) (resp *http.Response, err error) {
-	resp, err = client.Do(req)
-	defer resp.Body.Close()
-	return
+	mutexValor.Unlock()
+	return t
 }
 
 func main() {
-	var carteiras []Carteira
+	var carteiras []*Carteira
 	for i := 0; i < 15; i++ {
 		cart, _ := criaCarteira(true)
-		stk, _ := cart.geraStake(true)
-		cart.Stakes = append(cart.Stakes, stk)
-		carteiras = append(carteiras, cart)
+		carteiras = append(carteiras, &cart)
 	}
 	spew.Dump(carteiras)
+	go func() {
+		for {
+			if len(stakes) > 15 {
+				escolheValidador()
+			}
+			time.Sleep(20 * time.Second)
+		}
+	}()
 	for {
-		// cart, ok := criaCarteira(false)
-
-		// if ok {
-		// 	stk, _ := cart.geraStake(true)
-		// 	cart.Stakes = append(cart.Stakes, stk)
-		// 	carteiras = append(carteiras, cart)
-		// 	spew.Dump(carteiras)
-		// }
-
-		for indiceCart, cart := range carteiras {
-			for indiceStk, stk := range cart.Stakes {
-				spew.Dump(stk)
-				if !stk.Sent {
-					// stkJSON := []byte(`{"id":"` + stk.ID.String() +
-					// 	`", "idcarteira":"` + stk.IDCarteira.String() +
-					// 	`", "dados":` + strconv.Itoa(stk.Dados) +
-					// 	`, "tokens":` + strconv.Itoa(stk.Tokens) +
-					// 	`}`)
-					// req, err := http.NewRequest("POST", "http://localhost:9000", bytes.NewBuffer(stkJSON))
-					// if err != nil {
-					// 	log.Fatal(err)
-					// }
-					// req.Close = true
-					// req.Header.Set("Content-Type", "application/json")
-					// client := &http.Client{Timeout: 0 * time.Second}
-					// _, err = enviaStake(client, req)
-					// if err != nil {
-					// 	log.Fatal(err)
-					// }
-					stakes = append(stakes, stk)
-					stk.Sent = true
-					cart.Stakes[indiceStk] = stk
-				}
-			}
-			stk, ok := cart.geraStake(false)
-			if ok {
-				spew.Dump("Carteira " + strconv.Itoa(indiceCart) + " gerou stake.")
-				spew.Dump(stk)
+		for _, cart := range carteiras {
+			cart.atualizaCarteira()
+			stk := cart.geraStake(carteiras)
+			if (stk != Stake{}) {
+				mutexStks.Lock()
+				stakes = append(stakes, stk)
+				mutexStks.Unlock()
 			}
 		}
-		if len(stakes) > 10 {
-			for _, cart := range carteiras {
-
-			}
-		}
-		slp := rand.Intn(20)
-		spew.Dump(slp)
-		time.Sleep(time.Duration(slp) * time.Second)
 	}
 }

@@ -3,6 +3,11 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"io"
+	"log"
+	"net/http"
+	"os"
 	"sync"
 
 	// "fmt"
@@ -11,9 +16,9 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/google/go-cmp/cmp"
 	cmp "github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	wr "github.com/mroth/weightedrand"
 )
 
@@ -50,8 +55,7 @@ var mutexStks = &sync.Mutex{}
 var blocosConsolidadosTX = 0
 var blocosConsolidadosCurrency = make(map[string]int)
 var valorRetidoEsperandoTx = make(map[string]int)
-
-//sincronizador; garante não-concorrência nas adições de blocos
+var carteiras []*Carteira
 var mutex = &sync.Mutex{}
 
 //calculador de hashes
@@ -233,8 +237,69 @@ func limpaStakes() {
 	stakes = txs
 }
 
+func run() error {
+	mux := makeMuxRouter()
+	httpAddr := os.Getenv("ADDR")
+	log.Println("Servlet ouvindo na porta ", httpAddr)
+	server := &http.Server{
+		Addr:           ":" + httpAddr,
+		Handler:        mux,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//funcao que cria o roteador
+func makeMuxRouter() http.Handler {
+	muxRouter := mux.NewRouter()
+	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
+	muxRouter.HandleFunc("/stakes", handleGetStakes).Methods("GET")
+	muxRouter.HandleFunc("/carteiras", handleGetCarteiras).Methods("GET")
+	return muxRouter
+}
+
+func handleGetBlockchain(writer http.ResponseWriter, req *http.Request) {
+	mutex.Lock()
+	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	mutex.Unlock()
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	io.WriteString(writer, string(bytes))
+}
+
+func handleGetStakes(writer http.ResponseWriter, req *http.Request) {
+	mutexStks.Lock()
+	bytes, err := json.MarshalIndent(stakes, "", "  ")
+	mutexStks.Unlock()
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	io.WriteString(writer, string(bytes))
+}
+
+func handleGetCarteiras(writer http.ResponseWriter, req *http.Request) {
+	bytes, err := json.MarshalIndent(carteiras, "", "  ")
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	io.WriteString(writer, string(bytes))
+}
+
 func main() {
-	var carteiras []*Carteira
 	for i := 0; i < 15; i++ {
 		cart, _ := criaCarteira(true)
 		carteiras = append(carteiras, &cart)

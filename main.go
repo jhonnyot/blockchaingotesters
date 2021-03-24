@@ -19,6 +19,7 @@ import (
 	cmp "github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	wr "github.com/mroth/weightedrand"
 )
 
@@ -313,6 +314,8 @@ func main() {
 			time.Sleep(20 * time.Second)
 		}
 	}()
+	_ = godotenv.Load()
+	log.Fatal(run())
 	for {
 		for _, cart := range carteiras {
 			cart.atualizaCarteira()

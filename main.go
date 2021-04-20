@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 
 	// "fmt"
@@ -72,14 +73,14 @@ func calculaHashBloco(bloco Bloco) string {
 	return calculaHash(totalDados)
 }
 
-func geraBloco(blocoAnterior Bloco, validador string) (Bloco, error) {
+func geraBloco(blocoAnterior Bloco, validador string, stks []Stake) (Bloco, error) {
 	var novoBloco Bloco
 
 	t := time.Now()
 
 	novoBloco.Indice = blocoAnterior.Indice + 1
 	novoBloco.Timestamp = t.String()
-	novoBloco.Dados = stakes
+	novoBloco.Dados = stks
 	novoBloco.HashAnt = blocoAnterior.Hash
 	novoBloco.Hash = calculaHashBloco(novoBloco)
 	novoBloco.Validador = validador
@@ -88,6 +89,8 @@ func geraBloco(blocoAnterior Bloco, validador string) (Bloco, error) {
 }
 
 func (cart *Carteira) atualizaCarteira() {
+	spew.Dump(valorRetidoEsperandoTx)
+	// spew.Dump(blocosConsolidadosCurrency)
 	for _, blc := range Blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
 		mutexValor.Lock()
 		blocosConsolidadosCurrency[cart.ID.String()]++
@@ -142,7 +145,7 @@ func escolheValidador() {
 
 	loteria := make(map[string]int)
 	if len(stakes) > 0 {
-		for _, stk := range stakes {
+		for _, stk := range stakes[0:15] {
 			loteria[stk.IDCarteiraOrigem.String()] = stk.Currency
 		}
 
@@ -156,7 +159,7 @@ func escolheValidador() {
 				choices = append(choices, wr.NewChoice(k, uint(v)))
 			}
 			chooser, _ := wr.NewChooser(choices...)
-			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string))
+			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string), stakes[0:14])
 			_ = insertBloco(novoBloco)
 		}
 	}
@@ -183,7 +186,7 @@ func criaCarteira(inicial bool) (cart Carteira, ok bool) {
 }
 
 func (cart *Carteira) geraStake(carteiras []*Carteira) Stake {
-	rand.Seed(time.Now().Unix())
+	rand.Seed(time.Now().UnixNano())
 	t := Stake{}
 	mutexValor.Lock()
 	c := carteiras[rand.Intn(len(carteiras))]
@@ -300,8 +303,23 @@ func handleGetCarteiras(writer http.ResponseWriter, req *http.Request) {
 	io.WriteString(writer, string(bytes))
 }
 
+func startCarteiras() {
+	for {
+		for _, cart := range carteiras {
+			cart.atualizaCarteira()
+			time.Sleep(600 * time.Millisecond)
+			stk := cart.geraStake(carteiras)
+			if (stk != Stake{}) {
+				mutexStks.Lock()
+				stakes = append(stakes, stk)
+				mutexStks.Unlock()
+			}
+		}
+	}
+}
+
 func main() {
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 50; i++ {
 		cart, _ := criaCarteira(true)
 		carteiras = append(carteiras, &cart)
 	}
@@ -311,20 +329,24 @@ func main() {
 			if len(stakes) > 15 {
 				escolheValidador()
 			}
-			time.Sleep(20 * time.Second)
+			time.Sleep(15 * time.Second)
 		}
 	}()
+	t := time.Now()
+	blocoGenese := Bloco{}
+	hasher := sha256.New()
+	blocoGenese = Bloco{0, t.String(), []Stake{}, "", "", ""}
+	totalDados := strconv.Itoa(blocoGenese.Indice) + blocoGenese.Timestamp + blocoGenese.HashAnt
+	hasher.Write([]byte(totalDados))
+	hashFinal := hasher.Sum(nil)
+	blocoGenese.Hash = hex.EncodeToString(hashFinal)
+
+	spew.Dump(blocoGenese)
+
+	mutex.Lock()
+	Blockchain = append(Blockchain, blocoGenese)
+	mutex.Unlock()
 	_ = godotenv.Load()
+	go startCarteiras()
 	log.Fatal(run())
-	for {
-		for _, cart := range carteiras {
-			cart.atualizaCarteira()
-			stk := cart.geraStake(carteiras)
-			if (stk != Stake{}) {
-				mutexStks.Lock()
-				stakes = append(stakes, stk)
-				mutexStks.Unlock()
-			}
-		}
-	}
 }

@@ -25,13 +25,21 @@ import (
 
 const url = "http://localhost:8080"
 
-var carteiras []*Carteira
-var working = sync.Map{}
+var (
+	carteiras                  []*Carteira
+	working                    = sync.Map{}
+	mutexBC                    = &sync.Mutex{}
+	mutexTrans                 = &sync.Mutex{}
+	mutexValor                 = &sync.Mutex{}
+	transactions               []Transacao
+	blocosConsolidadosTX       = 0
+	blocosConsolidadosCurrency = make(map[string]int)
+	valorRetidoEsperandoTx     = make(map[string]int)
+)
 
 type Bloco struct {
-	Indice    int
-	Timestamp string
-	// Dados       int
+	Indice      int
+	Timestamp   string
 	Transacoes  []Transacao
 	Hash        string
 	HashAnt     string
@@ -39,6 +47,8 @@ type Bloco struct {
 	Nonce       string
 	Minerador   string
 }
+
+var blockchain []Bloco
 
 type Transacao struct {
 	ID                uuid.UUID
@@ -52,22 +62,7 @@ type Carteira struct {
 	Currency int
 }
 
-var blockchain []Bloco
-var mutexBC = &sync.Mutex{}
-var mutexTrans = &sync.Mutex{}
-var mutexValor = &sync.Mutex{}
-var transactions []Transacao
-var blocosConsolidadosTX = 0
-var blocosConsolidadosCurrency = make(map[string]int)
-var valorRetidoEsperandoTx = make(map[string]int)
-
-// var goroutineDelta = make(chan int)
-
 func (cart *Carteira) atualizaCarteira() {
-	// chain = getRequest()
-	// if (!cmp.Equal(chain, cart.blockchain)) {
-	// 	if (len(chain) >)
-	// }
 	for _, blc := range blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
 		mutexValor.Lock()
 		blocosConsolidadosCurrency[cart.ID.String()]++
@@ -87,7 +82,7 @@ func (cart *Carteira) atualizaCarteira() {
 }
 
 func calculaHash(bloco Bloco) string {
-	totalDados := strconv.Itoa(bloco.Indice) + bloco.Timestamp /*+ strconv.Itoa(bloco.Dados)*/ + bloco.HashAnt + bloco.Nonce
+	totalDados := strconv.Itoa(bloco.Indice) + bloco.Timestamp + bloco.HashAnt + bloco.Nonce
 	hasher := sha256.New()
 	hasher.Write([]byte(totalDados))
 	hashFinal := hasher.Sum(nil)
@@ -114,7 +109,6 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 
 	for {
 		select {
-		// case <-c.Done():
 		case <-ctx.Done():
 			spew.Dump("ctx.Cancel()")
 			return Bloco{}
@@ -156,7 +150,7 @@ func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
 	return t
 }
 
-func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) { //wg *sync.WaitGroup) {
+func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	rand.Seed(time.Now().Unix())
 	if rand.Intn(100) >= 70 {
 		transacao := cart.criaTransacao(carteiras)
@@ -165,17 +159,14 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) { /
 			mutexTrans.Lock()
 			transactions = append(transactions, transacao)
 			mutexTrans.Unlock()
-			working.Store(cart.ID.String(), false)
-			return
 		}
 	}
 
 	if len(transactions) > 99 {
-		novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, 5, cart.ID.String())
+		novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, 4, cart.ID.String())
 		if insertBloco(novoBloco) {
 			spew.Dump("Bloco inserido com sucesso.")
 			c := *cancel
-
 			c()
 		}
 	}
@@ -219,7 +210,7 @@ func startCarteiras() {
 				}
 				if v, _ := working.Load(cart.ID.String()); !v.(interface{}).(bool) {
 					working.Store(cart.ID.String(), true)
-					go cart.start(ctx, &cancel) //wg)
+					go cart.start(ctx, &cancel)
 				}
 			}
 		}
@@ -228,8 +219,10 @@ func startCarteiras() {
 
 func run() error {
 	mux := makeMuxRouter()
+	//Recupera a porta a ser usada pelo servidor nas variáveis de ambiente
 	httpAddr := os.Getenv("ADDR")
 	log.Println("Servlet ouvindo na porta ", httpAddr)
+	//Define o servidor HTTP
 	server := &http.Server{
 		Addr:           ":" + httpAddr,
 		Handler:        mux,
@@ -289,14 +282,18 @@ func handleGetCarteiras(writer http.ResponseWriter, req *http.Request) {
 }
 
 func limpaTransacoes() {
+	//Cria e popula um mapa com todas as transações da pool
 	mapTransacoes := make(map[uuid.UUID]Transacao)
 	for _, t := range transactions {
 		mapTransacoes[t.ID] = t
 	}
 	blocos := 0
+	//Percorre os blocos a partir do último bloco consolidado
 	for _, bloco := range blockchain[blocosConsolidadosTX:] {
 		blocos++
+		//Percorre as transações destes blocos
 		for _, trans := range bloco.Transacoes {
+			//Retira do mapa as transações que aparecem nestes blocos
 			for _, tfila := range transactions {
 				if trans.ID == tfila.ID {
 					delete(mapTransacoes, tfila.ID)
@@ -304,25 +301,32 @@ func limpaTransacoes() {
 			}
 		}
 	}
+	//Consolida os blocos percorridos
 	blocosConsolidadosTX += blocos
+	//Cria uma slice auxiliar de transações
 	txs := make([]Transacao, 0, len(mapTransacoes))
+	//Adiciona nesta slice as transações restantes do mapa
 	for _, tx := range mapTransacoes {
 		txs = append(txs, tx)
 	}
+	//Transforma a slice auxiliar na nova pool de transações
 	transactions = txs
 }
 
 func main() {
+	//Carrega variáveis de ambiente
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
+	//Cria 100 carteiras, cada uma com 100 moedas em seu estado inicial.
 	for numcart := 0; numcart < 100; numcart++ {
 		carteiras = append(carteiras, &Carteira{
 			ID:       uuid.New(),
 			Currency: 100,
 		})
 	}
+	//Criação do bloco gênese
 	t := time.Now()
 	blocoGenese := Bloco{}
 	hasher := sha256.New()
@@ -331,12 +335,12 @@ func main() {
 	hasher.Write([]byte(totalDados))
 	hashFinal := hasher.Sum(nil)
 	blocoGenese.Hash = hex.EncodeToString(hashFinal)
-
-	spew.Dump(blocoGenese)
-
+	//Insere o bloco gênese na blockchain
 	mutexBC.Lock()
 	blockchain = append(blockchain, blocoGenese)
 	mutexBC.Unlock()
+	//goroutine que começa o trabalho das carteiras
 	go startCarteiras()
+	//levanta o servidor http
 	log.Fatal(run())
 }

@@ -24,14 +24,12 @@ import (
 	wr "github.com/mroth/weightedrand"
 )
 
-//carteira
 type Carteira struct {
 	ID       uuid.UUID
 	Stakes   []Stake
 	Currency int
 }
 
-//stake
 type Stake struct {
 	ID                uuid.UUID
 	IDCarteiraOrigem  uuid.UUID
@@ -48,19 +46,20 @@ type Bloco struct {
 	Validador string
 }
 
-var Blockchain []Bloco
-var stakes []Stake
-var validadores = make(map[string]int)
-var anunciador = make(chan string)
-var mutexValor = &sync.Mutex{}
-var mutexStks = &sync.Mutex{}
-var blocosConsolidadosTX = 0
-var blocosConsolidadosCurrency = make(map[string]int)
-var valorRetidoEsperandoTx = make(map[string]int)
-var carteiras []*Carteira
-var mutex = &sync.Mutex{}
+var (
+	Blockchain                 []Bloco
+	stakes                     []Stake
+	validadores                = make(map[string]int)
+	anunciador                 = make(chan string)
+	mutexValor                 = &sync.Mutex{}
+	mutexStks                  = &sync.Mutex{}
+	blocosConsolidadosTX       = 0
+	blocosConsolidadosCurrency = make(map[string]int)
+	valorRetidoEsperandoTx     = make(map[string]int)
+	carteiras                  []*Carteira
+	mutex                      = &sync.Mutex{}
+)
 
-//calculador de hashes
 func calculaHash(s string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(s))
@@ -69,7 +68,7 @@ func calculaHash(s string) string {
 }
 
 func calculaHashBloco(bloco Bloco) string {
-	totalDados := string(bloco.Indice) + bloco.Timestamp + /*string(bloco.Dados) +*/ bloco.HashAnt
+	totalDados := strconv.Itoa(bloco.Indice) + bloco.Timestamp + bloco.HashAnt
 	return calculaHash(totalDados)
 }
 
@@ -89,8 +88,6 @@ func geraBloco(blocoAnterior Bloco, validador string, stks []Stake) (Bloco, erro
 }
 
 func (cart *Carteira) atualizaCarteira() {
-	spew.Dump(valorRetidoEsperandoTx)
-	// spew.Dump(blocosConsolidadosCurrency)
 	for _, blc := range Blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
 		mutexValor.Lock()
 		blocosConsolidadosCurrency[cart.ID.String()]++
@@ -130,36 +127,25 @@ func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 
 func escolheValidador() {
 	spew.Dump("Validando")
-	// go func() {
-	// 	mutex.Lock()
-	// 	for _, candidato := range filaDeBlocos {
-	// 		tempBlocos = append(tempBlocos, candidato)
-	// 	}
-	// 	filaDeBlocos = []Bloco{}
-	// 	mutex.Unlock()
-	// }()
-	// spew.Dump(filaDeBlocos)
-	// mutexTemp.Lock()
-	// temp := tempBlocos
-	// mutexTemp.Unlock()
-
 	loteria := make(map[string]int)
 	if len(stakes) > 0 {
 		for _, stk := range stakes[0:15] {
-			loteria[stk.IDCarteiraOrigem.String()] = stk.Currency
+			if _, ok := loteria[stk.IDCarteiraOrigem.String()]; !ok {
+				loteria[stk.IDCarteiraOrigem.String()] = stk.Currency
+			} else {
+				loteria[stk.IDCarteiraOrigem.String()] += stk.Currency
+			}
 		}
 
 		//escolhe um vencedor aleatório
 		if len(loteria) > 0 {
 			rand.Seed(time.Now().UTC().UnixNano())
-			// numero := rand.New(source)
-			// vencedor := loteria[numero.Intn(len(loteria))]
 			var choices []wr.Choice
 			for k, v := range loteria {
 				choices = append(choices, wr.NewChoice(k, uint(v)))
 			}
 			chooser, _ := wr.NewChooser(choices...)
-			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string), stakes[0:14])
+			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string), stakes[0:15])
 			_ = insertBloco(novoBloco)
 		}
 	}
@@ -238,7 +224,9 @@ func limpaStakes() {
 	for _, tx := range mapTransacoes {
 		txs = append(txs, tx)
 	}
+	mutexStks.Lock()
 	stakes = txs
+	mutexStks.Unlock()
 }
 
 func run() error {

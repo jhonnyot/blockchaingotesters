@@ -96,7 +96,6 @@ func validaHash(hash string, dificuldade int) bool {
 
 func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, dificuldade int, idCart string) Bloco {
 	var novoBloco Bloco
-	// c := *ctx
 
 	t := time.Now()
 

@@ -35,6 +35,9 @@ var (
 	blocosConsolidadosTX       = 0
 	blocosConsolidadosCurrency = make(map[string]int)
 	valorRetidoEsperandoTx     = make(map[string]int)
+	blockchain                 []Bloco
+	cartMaliciosas             = make(map[string]*Carteira)
+	malicious                  bool
 )
 
 type Bloco struct {
@@ -46,9 +49,8 @@ type Bloco struct {
 	Dificuldade int
 	Nonce       string
 	Minerador   string
+	Malicious   bool
 }
-
-var blockchain []Bloco
 
 type Transacao struct {
 	ID                uuid.UUID
@@ -94,7 +96,7 @@ func validaHash(hash string, dificuldade int) bool {
 	return strings.HasPrefix(hash, prefixo)
 }
 
-func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, dificuldade int, idCart string) Bloco {
+func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, dificuldade int, idCart string, malicious bool) Bloco {
 	var novoBloco Bloco
 
 	t := time.Now()
@@ -149,6 +151,16 @@ func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
 	return t
 }
 
+func getMaliciousTXs() []Transacao {
+	var retorno []Transacao
+	for _, tx := range transactions {
+		if _, ok := cartMaliciosas[tx.IDCarteiraOrigem.String()]; ok {
+			retorno = append(retorno, tx)
+		}
+	}
+	return retorno
+}
+
 func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	rand.Seed(time.Now().Unix())
 	if rand.Intn(100) >= 70 {
@@ -162,11 +174,22 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	}
 
 	if len(transactions) > 99 {
-		novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, 4, cart.ID.String())
-		if insertBloco(novoBloco) {
-			spew.Dump("Bloco inserido com sucesso.")
-			c := *cancel
-			c()
+		if _, ok := cartMaliciosas[cart.ID.String()]; !ok || !malicious {
+			novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, 5, cart.ID.String(), malicious)
+			if insertBloco(novoBloco) {
+				spew.Dump("Bloco inserido com sucesso.")
+				c := *cancel
+				c()
+			}
+		} else if ok {
+			if txs := getMaliciousTXs(); !cmp.Equal(txs, []Transacao{}) {
+				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], txs, 5, cart.ID.String(), malicious)
+				if insertBloco(novoBloco) {
+					spew.Dump("Bloco malicioso inserido com sucesso.")
+					c := *cancel
+					c()
+				}
+			}
 		}
 	}
 	working.Store(cart.ID.String(), false)
@@ -243,6 +266,7 @@ func makeMuxRouter() http.Handler {
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
 	muxRouter.HandleFunc("/transactions", handleGetTransactions).Methods("GET")
 	muxRouter.HandleFunc("/carteiras", handleGetCarteiras).Methods("GET")
+	muxRouter.HandleFunc("/malicious", handleGetCarteirasMaliciosas).Methods("GET")
 	return muxRouter
 }
 
@@ -272,6 +296,16 @@ func handleGetTransactions(writer http.ResponseWriter, req *http.Request) {
 
 func handleGetCarteiras(writer http.ResponseWriter, req *http.Request) {
 	bytes, err := json.MarshalIndent(carteiras, "", "  ")
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	io.WriteString(writer, string(bytes))
+}
+
+func handleGetCarteirasMaliciosas(writer http.ResponseWriter, req *http.Request) {
+	bytes, err := json.MarshalIndent(cartMaliciosas, "", "  ")
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -318,6 +352,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	malicious = true
 	//Cria 100 carteiras, cada uma com 100 moedas em seu estado inicial.
 	for numcart := 0; numcart < 100; numcart++ {
 		carteiras = append(carteiras, &Carteira{
@@ -325,11 +360,17 @@ func main() {
 			Currency: 100,
 		})
 	}
+	if malicious {
+		for numcart := 0; numcart <= 50; numcart++ {
+			cart := carteiras[numcart]
+			cartMaliciosas[cart.ID.String()] = cart
+		}
+	}
 	//Criação do bloco gênese
 	t := time.Now()
 	blocoGenese := Bloco{}
 	hasher := sha256.New()
-	blocoGenese = Bloco{0, t.String(), []Transacao{}, "", "", 0, "", ""}
+	blocoGenese = Bloco{0, t.String(), []Transacao{}, "", "", 0, "", "", false}
 	totalDados := strconv.Itoa(blocoGenese.Indice) + blocoGenese.Timestamp + blocoGenese.HashAnt + blocoGenese.Nonce
 	hasher.Write([]byte(totalDados))
 	hashFinal := hasher.Sum(nil)

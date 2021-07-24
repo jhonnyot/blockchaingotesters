@@ -191,9 +191,9 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 			if _, ok := cartMaliciosas[cart.ID.String()]; !ok || !malicious {
 				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, dificuldade, cart.ID.String(), false)
 				if insertBloco(novoBloco) {
-					// if verbose {
-					spew.Dump("Bloco inserido com sucesso.")
-					// }
+					if verbose >= 1 {
+						spew.Dump("Bloco inserido com sucesso.")
+					}
 					c := *cancel
 					c()
 				}
@@ -201,9 +201,9 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 				if txs := getMaliciousTXs(); !cmp.Equal(txs, []Transacao{}) {
 					novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], txs, dificuldade, cart.ID.String(), true)
 					if insertBloco(novoBloco) {
-						// if verbose {
-						spew.Dump("Bloco malicioso inserido com sucesso.")
-						// }
+						if verbose >= 1 {
+							spew.Dump("Bloco malicioso inserido com sucesso.")
+						}
 						c := *cancel
 						c()
 					}
@@ -219,9 +219,9 @@ func insertBloco(novoBloco Bloco) bool {
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, blockchain[len(blockchain)-1]) {
 		mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
+		mutexBC.Unlock()
 		salvaEstado()
 		limpaTransacoes()
-		mutexBC.Unlock()
 		return true
 	}
 	return false

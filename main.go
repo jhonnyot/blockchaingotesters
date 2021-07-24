@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -23,7 +25,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const url = "http://localhost:8080"
+const (
+	url         = "http://localhost:8080"
+	totalcart   = 200
+	dificuldade = 4
+)
 
 var (
 	carteiras                  []*Carteira
@@ -38,6 +44,7 @@ var (
 	blockchain                 []Bloco
 	cartMaliciosas             = make(map[string]*Carteira)
 	malicious                  bool
+	verbose                    = false
 )
 
 type Bloco struct {
@@ -107,11 +114,14 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 	novoBloco.HashAnt = blocoAntigo.Hash
 	novoBloco.Dificuldade = dificuldade
 	novoBloco.Minerador = idCart
+	novoBloco.Malicious = malicious
 
 	for {
 		select {
 		case <-ctx.Done():
-			spew.Dump("ctx.Cancel()")
+			if verbose {
+				spew.Dump("ctx.Cancel()")
+			}
 			return Bloco{}
 		default:
 			src := rand.NewSource(time.Now().UnixNano())
@@ -166,7 +176,9 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	if rand.Intn(100) >= 70 {
 		transacao := cart.criaTransacao(carteiras)
 		if (!cmp.Equal(transacao, Transacao{})) {
-			spew.Dump(cart.ID.String() + " gerou transação.")
+			if verbose {
+				spew.Dump(cart.ID.String() + " gerou transação.")
+			}
 			mutexTrans.Lock()
 			transactions = append(transactions, transacao)
 			mutexTrans.Unlock()
@@ -174,20 +186,27 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	}
 
 	if len(transactions) > 99 {
-		if _, ok := cartMaliciosas[cart.ID.String()]; !ok || !malicious {
-			novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, 5, cart.ID.String(), malicious)
-			if insertBloco(novoBloco) {
-				spew.Dump("Bloco inserido com sucesso.")
-				c := *cancel
-				c()
-			}
-		} else if ok {
-			if txs := getMaliciousTXs(); !cmp.Equal(txs, []Transacao{}) {
-				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], txs, 5, cart.ID.String(), malicious)
+		rand.Seed(time.Now().UnixNano())
+		if rand.Intn(100) >= 50 {
+			if _, ok := cartMaliciosas[cart.ID.String()]; !ok || !malicious {
+				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, dificuldade, cart.ID.String(), false)
 				if insertBloco(novoBloco) {
-					spew.Dump("Bloco malicioso inserido com sucesso.")
+					// if verbose {
+					spew.Dump("Bloco inserido com sucesso.")
+					// }
 					c := *cancel
 					c()
+				}
+			} else if ok {
+				if txs := getMaliciousTXs(); !cmp.Equal(txs, []Transacao{}) {
+					novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], txs, dificuldade, cart.ID.String(), true)
+					if insertBloco(novoBloco) {
+						// if verbose {
+						spew.Dump("Bloco malicioso inserido com sucesso.")
+						// }
+						c := *cancel
+						c()
+					}
 				}
 			}
 		}
@@ -200,6 +219,7 @@ func insertBloco(novoBloco Bloco) bool {
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, blockchain[len(blockchain)-1]) {
 		mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
+		salvaEstado()
 		limpaTransacoes()
 		mutexBC.Unlock()
 		return true
@@ -221,6 +241,9 @@ func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 func startCarteiras() {
 	ctx, cancel := context.WithCancel(context.Background())
 	for {
+		if len(blockchain) > 1000 {
+			os.Exit(1)
+		}
 		select {
 		case <-ctx.Done():
 			ctx, cancel = context.WithCancel(context.Background())
@@ -346,6 +369,23 @@ func limpaTransacoes() {
 	transactions = txs
 }
 
+func salvaEstado() {
+	file1 := "./carteiras.json"
+	file2 := "./malicious.json"
+	file3 := "./transactions.json"
+	file4 := "./blockchain.json"
+
+	bytes1, _ := json.MarshalIndent(carteiras, "", "  ")
+	bytes2, _ := json.MarshalIndent(cartMaliciosas, "", "  ")
+	bytes3, _ := json.MarshalIndent(transactions, "", "  ")
+	bytes4, _ := json.MarshalIndent(blockchain, "", "  ")
+
+	_ = ioutil.WriteFile(file1, bytes1, 0644)
+	_ = ioutil.WriteFile(file2, bytes2, 0644)
+	_ = ioutil.WriteFile(file3, bytes3, 0644)
+	_ = ioutil.WriteFile(file4, bytes4, 0644)
+}
+
 func main() {
 	//Carrega variáveis de ambiente
 	err := godotenv.Load()
@@ -354,17 +394,18 @@ func main() {
 	}
 	malicious = true
 	//Cria 100 carteiras, cada uma com 100 moedas em seu estado inicial.
-	for numcart := 0; numcart < 100; numcart++ {
+	for numcart := 0; numcart < totalcart; numcart++ {
 		carteiras = append(carteiras, &Carteira{
 			ID:       uuid.New(),
 			Currency: 100,
 		})
 	}
 	if malicious {
-		for numcart := 0; numcart <= 50; numcart++ {
+		for numcart := 0; numcart <= int(math.Ceil(totalcart*.51)); numcart++ {
 			cart := carteiras[numcart]
 			cartMaliciosas[cart.ID.String()] = cart
 		}
+		spew.Dump(cartMaliciosas)
 	}
 	//Criação do bloco gênese
 	t := time.Now()

@@ -26,9 +26,7 @@ import (
 )
 
 const (
-	url         = "http://localhost:8080"
-	totalcart   = 200
-	dificuldade = 4
+	url = "http://localhost:8080"
 )
 
 var (
@@ -44,7 +42,9 @@ var (
 	blockchain                 []Bloco
 	cartMaliciosas             = make(map[string]*Carteira)
 	malicious                  bool
-	verbose                    = false
+	verbose                    int
+	totalcart                  int
+	dificuldade                int
 )
 
 type Bloco struct {
@@ -119,7 +119,7 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 	for {
 		select {
 		case <-ctx.Done():
-			if verbose {
+			if verbose >= 3 {
 				spew.Dump("ctx.Cancel()")
 			}
 			return Bloco{}
@@ -176,7 +176,7 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 	if rand.Intn(100) >= 70 {
 		transacao := cart.criaTransacao(carteiras)
 		if (!cmp.Equal(transacao, Transacao{})) {
-			if verbose {
+			if verbose >= 2 {
 				spew.Dump(cart.ID.String() + " gerou transação.")
 			}
 			mutexTrans.Lock()
@@ -392,7 +392,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	malicious = true
+	totalcart, _ = strconv.Atoi(os.Args[1])
+	dificuldade, _ = strconv.Atoi(os.Args[2])
+	malicious, _ = strconv.ParseBool(os.Args[3])
+	verbose, _ = strconv.Atoi(os.Args[4])
 	//Cria 100 carteiras, cada uma com 100 moedas em seu estado inicial.
 	for numcart := 0; numcart < totalcart; numcart++ {
 		carteiras = append(carteiras, &Carteira{
@@ -401,7 +404,7 @@ func main() {
 		})
 	}
 	if malicious {
-		for numcart := 0; numcart <= int(math.Ceil(totalcart*.51)); numcart++ {
+		for numcart := 0; numcart <= int(math.Ceil((float64(totalcart) * .51))); numcart++ {
 			cart := carteiras[numcart]
 			cartMaliciosas[cart.ID.String()] = cart
 		}

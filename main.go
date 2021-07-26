@@ -45,6 +45,7 @@ var (
 	verbose                    int
 	totalcart                  int
 	dificuldade                int
+	alvoBlocos                 int
 )
 
 type Bloco struct {
@@ -241,7 +242,7 @@ func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 func startCarteiras() {
 	ctx, cancel := context.WithCancel(context.Background())
 	for {
-		if len(blockchain) > 1000 {
+		if len(blockchain) > alvoBlocos {
 			os.Exit(1)
 		}
 		select {
@@ -396,6 +397,7 @@ func main() {
 	dificuldade, _ = strconv.Atoi(os.Args[2])
 	malicious, _ = strconv.ParseBool(os.Args[3])
 	verbose, _ = strconv.Atoi(os.Args[4])
+	alvoBlocos, _ = strconv.Atoi(os.Args[5])
 	//Cria 100 carteiras, cada uma com 100 moedas em seu estado inicial.
 	for numcart := 0; numcart < totalcart; numcart++ {
 		carteiras = append(carteiras, &Carteira{

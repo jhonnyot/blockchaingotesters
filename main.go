@@ -217,14 +217,16 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 }
 
 func insertBloco(novoBloco Bloco) bool {
+	mutexBC.Lock()
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, blockchain[len(blockchain)-1]) {
-		mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
-		mutexBC.Unlock()
 		salvaEstado()
+		mutexTrans.Lock()
 		limpaTransacoes()
+		mutexTrans.Unlock()
 		return true
 	}
+	mutexBC.Unlock()
 	return false
 }
 

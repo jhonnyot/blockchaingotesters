@@ -221,10 +221,10 @@ func insertBloco(novoBloco Bloco) bool {
 		mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
 		salvaEstado()
+		mutexBC.Unlock()
 		mutexTrans.Lock()
 		limpaTransacoes()
 		mutexTrans.Unlock()
-		mutexBC.Unlock()
 		return true
 	}
 	return false

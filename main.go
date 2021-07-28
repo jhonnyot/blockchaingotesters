@@ -193,7 +193,7 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, dificuldade, cart.ID.String(), false)
 				if insertBloco(novoBloco) {
 					if verbose >= 1 {
-						spew.Dump("Bloco inserido com sucesso.")
+						spew.Dump("Bloco inserido com sucesso. " + time.Now().Format("15:04:05"))
 					}
 					c := *cancel
 					c()
@@ -203,7 +203,7 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 					novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], txs, dificuldade, cart.ID.String(), true)
 					if insertBloco(novoBloco) {
 						if verbose >= 1 {
-							spew.Dump("Bloco malicioso inserido com sucesso.")
+							spew.Dump("Bloco malicioso inserido com sucesso. " + time.Now().Format("15:04:05"))
 						}
 						c := *cancel
 						c()
@@ -375,7 +375,7 @@ func limpaTransacoes() {
 }
 
 func salvaEstado() {
-	spew.Dump("Salvando...")
+	spew.Dump("Salvando... " + time.Now().Format("15:04:05"))
 	file1 := "./carteiras.json"
 	file2 := "./malicious.json"
 	file3 := "./transactions.json"
@@ -390,7 +390,7 @@ func salvaEstado() {
 	_ = ioutil.WriteFile(file2, bytes2, 0644)
 	_ = ioutil.WriteFile(file3, bytes3, 0644)
 	_ = ioutil.WriteFile(file4, bytes4, 0644)
-	spew.Dump("Salvo!")
+	spew.Dump("Salvo! " + time.Now().Format("15:04:05"))
 }
 
 func main() {

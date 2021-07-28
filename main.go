@@ -220,7 +220,9 @@ func insertBloco(novoBloco Bloco) bool {
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, blockchain[len(blockchain)-1]) {
 		mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
-		salvaEstado()
+		if len(blockchain)%100 == 0 {
+			salvaEstado()
+		}
 		mutexBC.Unlock()
 		mutexTrans.Lock()
 		limpaTransacoes()
@@ -373,6 +375,7 @@ func limpaTransacoes() {
 }
 
 func salvaEstado() {
+	spew.Dump("Salvando...")
 	file1 := "./carteiras.json"
 	file2 := "./malicious.json"
 	file3 := "./transactions.json"
@@ -387,6 +390,7 @@ func salvaEstado() {
 	_ = ioutil.WriteFile(file2, bytes2, 0644)
 	_ = ioutil.WriteFile(file3, bytes3, 0644)
 	_ = ioutil.WriteFile(file4, bytes4, 0644)
+	spew.Dump("Salvo!")
 }
 
 func main() {

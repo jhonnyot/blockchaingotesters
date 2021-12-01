@@ -127,6 +127,7 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 			if verbose >= 3 {
 				spew.Dump("ctx.Cancel()")
 			}
+			mutexBC.Unlock()
 			return Bloco{}
 		default:
 			hex := fmt.Sprintf("%x", rand.Intn(int(^uint32(0))))

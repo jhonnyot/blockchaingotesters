@@ -232,7 +232,6 @@ func insertBloco(novoBloco Bloco) bool {
 		mutexTrans.Unlock()
 		return true
 	}
-	mutexBC.Unlock()
 	return false
 }
 

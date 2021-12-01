@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	cr "crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -73,6 +75,7 @@ type Carteira struct {
 }
 
 func (cart *Carteira) atualizaCarteira() {
+	mutexBC.Lock()
 	for _, blc := range blockchain[blocosConsolidadosCurrency[cart.ID.String()]:] {
 		mutexValor.Lock()
 		blocosConsolidadosCurrency[cart.ID.String()]++
@@ -89,6 +92,7 @@ func (cart *Carteira) atualizaCarteira() {
 			}
 		}
 	}
+	mutexBC.Unlock()
 }
 
 func calculaHash(bloco Bloco) string {
@@ -125,9 +129,7 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 			}
 			return Bloco{}
 		default:
-			src := rand.NewSource(time.Now().UnixNano())
-			r := rand.New(src)
-			hex := fmt.Sprintf("%x", r.Intn(int(^uint32(0))))
+			hex := fmt.Sprintf("%x", rand.Intn(int(^uint32(0))))
 			novoBloco.Nonce = hex
 			if !validaHash(calculaHash(novoBloco), novoBloco.Dificuldade) {
 				continue
@@ -142,7 +144,7 @@ func geraBloco(ctx context.Context, blocoAntigo Bloco, transacoes []Transacao, d
 }
 
 func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
-	rand.Seed(time.Now().Unix())
+	cart.atualizaCarteira()
 	t := Transacao{}
 	mutexValor.Lock()
 	c := carteiras[rand.Intn(len(carteiras))]
@@ -173,8 +175,10 @@ func getMaliciousTXs() []Transacao {
 }
 
 func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
-	rand.Seed(time.Now().Unix())
-	if rand.Intn(100) >= 70 {
+	// cart.atualizaCarteira()
+	// sleep := rand.Intn(500)
+	// time.Sleep(time.Millisecond * time.Duration(sleep))
+	if true || rand.Intn(100) >= 70 {
 		transacao := cart.criaTransacao(carteiras)
 		if (!cmp.Equal(transacao, Transacao{})) {
 			if verbose >= 2 {
@@ -186,9 +190,8 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 		}
 	}
 
-	if len(transactions) > 99 {
-		rand.Seed(time.Now().UnixNano())
-		if rand.Intn(100) >= 50 {
+	if len(transactions) > 15 {
+		if true || rand.Intn(100) >= 50 {
 			if _, ok := cartMaliciosas[cart.ID.String()]; !ok || !malicious {
 				novoBloco := geraBloco(ctx, blockchain[len(blockchain)-1], transactions, dificuldade, cart.ID.String(), false)
 				if insertBloco(novoBloco) {
@@ -223,10 +226,10 @@ func insertBloco(novoBloco Bloco) bool {
 		if len(blockchain)%100 == 0 {
 			salvaEstado()
 		}
-		mutexBC.Unlock()
 		mutexTrans.Lock()
 		limpaTransacoes()
 		mutexTrans.Unlock()
+		mutexBC.Unlock()
 		return true
 	}
 	return false
@@ -254,7 +257,6 @@ func startCarteiras() {
 			ctx, cancel = context.WithCancel(context.Background())
 		default:
 			for _, cart := range carteiras {
-				cart.atualizaCarteira()
 				if _, found := working.Load(cart.ID.String()); !found {
 					working.Store(cart.ID.String(), false)
 				}
@@ -391,6 +393,15 @@ func salvaEstado() {
 	_ = ioutil.WriteFile(file3, bytes3, 0644)
 	_ = ioutil.WriteFile(file4, bytes4, 0644)
 	spew.Dump("Salvo! " + time.Now().Format("15:04:05"))
+}
+
+func init() {
+	var b [8]byte
+	_, err := cr.Read(b[:])
+	if err != nil {
+		panic("cannot seed math/rand package with cryptographically secure random number generator")
+	}
+	rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
 }
 
 func main() {

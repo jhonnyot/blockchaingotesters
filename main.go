@@ -198,6 +198,7 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 					if verbose >= 1 {
 						spew.Dump("Bloco inserido com sucesso. " + time.Now().Format("15:04:05"))
 					}
+					mutexBC.Unlock()
 					c := *cancel
 					c()
 				}
@@ -208,10 +209,10 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 						if verbose >= 1 {
 							spew.Dump("Bloco malicioso inserido com sucesso. " + time.Now().Format("15:04:05"))
 						}
+						mutexBC.Unlock()
 						c := *cancel
 						c()
 					}
-					mutexBC.Unlock()
 				}
 			}
 		}

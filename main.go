@@ -228,7 +228,7 @@ func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
 
 func insertBloco(novoBloco Bloco) bool {
 	if (!cmp.Equal(novoBloco, Bloco{})) && blocoValido(novoBloco, blockchain[len(blockchain)-1]) {
-		mutexBC.Lock()
+		// mutexBC.Lock()
 		blockchain = append(blockchain, novoBloco)
 		if len(blockchain)%100 == 0 {
 			salvaEstado()
@@ -236,7 +236,7 @@ func insertBloco(novoBloco Bloco) bool {
 		mutexTrans.Lock()
 		limpaTransacoes()
 		mutexTrans.Unlock()
-		mutexBC.Unlock()
+		// mutexBC.Unlock()
 		return true
 	}
 	return false

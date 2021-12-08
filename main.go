@@ -148,16 +148,21 @@ func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
 	t := Transacao{}
 	mutexValor.Lock()
 	c := carteiras[rand.Intn(len(carteiras))]
-	if (c.ID != cart.ID) && ((cart.Currency - valorRetidoEsperandoTx[cart.ID.String()]) > 0) {
-		valor := rand.Intn(cart.Currency - valorRetidoEsperandoTx[cart.ID.String()])
-		if valor > 0 {
-			valorRetidoEsperandoTx[cart.ID.String()] += valor
-			t.ID = uuid.New()
-			t.IDCarteiraDestino = c.ID
-			t.IDCarteiraOrigem = cart.ID
-			t.Currency = valor
-			mutexValor.Unlock()
-			return t
+	if c.ID != cart.ID {
+		if (cart.Currency - valorRetidoEsperandoTx[cart.ID.String()]) > 0 {
+			valor := rand.Intn(cart.Currency - valorRetidoEsperandoTx[cart.ID.String()])
+			if valor > 0 {
+				valorRetidoEsperandoTx[cart.ID.String()] += valor
+				t.ID = uuid.New()
+				t.IDCarteiraDestino = c.ID
+				t.IDCarteiraOrigem = cart.ID
+				t.Currency = valor
+				mutexValor.Unlock()
+				return t
+			}
+		} else {
+			spew.Dump(cart)
+			spew.Dump(valorRetidoEsperandoTx[cart.ID.String()])
 		}
 	}
 	mutexValor.Unlock()
@@ -175,9 +180,6 @@ func getMaliciousTXs() []Transacao {
 }
 
 func (cart *Carteira) start(ctx context.Context, cancel *context.CancelFunc) {
-	// cart.atualizaCarteira()
-	// sleep := rand.Intn(500)
-	// time.Sleep(time.Millisecond * time.Duration(sleep))
 	if true || rand.Intn(100) >= 70 {
 		transacao := cart.criaTransacao(carteiras)
 		if (!cmp.Equal(transacao, Transacao{})) {
@@ -238,9 +240,11 @@ func insertBloco(novoBloco Bloco) bool {
 
 func blocoValido(novoBloco, blocoAnterior Bloco) bool {
 	if blocoAnterior.Indice+1 != novoBloco.Indice {
+		fmt.Println(novoBloco.Hash, "inválido. Índice", novoBloco.Indice, "≠", blocoAnterior.Indice, "+1")
 		return false
 	}
 	if blocoAnterior.Hash != novoBloco.HashAnt {
+		fmt.Println(novoBloco.Hash, "inválido. HashAnterior", novoBloco.HashAnt, "≠", blocoAnterior.Hash)
 		return false
 	}
 

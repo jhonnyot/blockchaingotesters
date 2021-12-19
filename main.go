@@ -171,11 +171,13 @@ func (cart *Carteira) criaTransacao(carteiras []*Carteira) Transacao {
 
 func getMaliciousTXs() []Transacao {
 	var retorno []Transacao
+	mutexTrans.Lock()
 	for _, tx := range transactions {
 		if _, ok := cartMaliciosas[tx.IDCarteiraOrigem.String()]; ok {
 			retorno = append(retorno, tx)
 		}
 	}
+	mutexTrans.Unlock()
 	return retorno
 }
 

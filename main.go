@@ -307,7 +307,7 @@ func startCarteiras() {
 }
 
 func main() {
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 150; i++ {
 		cart, _ := criaCarteira(true)
 		carteiras = append(carteiras, &cart)
 	}

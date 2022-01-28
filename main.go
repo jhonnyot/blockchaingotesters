@@ -306,6 +306,9 @@ func handleGetCarteiras(writer http.ResponseWriter, req *http.Request) {
 
 func startCarteiras() {
 	for {
+		if len(Blockchain) > alvoBlocos {
+			os.Exit(1)
+		}
 		for _, cart := range carteiras {
 			cart.atualizaCarteira()
 			time.Sleep(600 * time.Millisecond)

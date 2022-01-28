@@ -61,6 +61,8 @@ var (
 	valorRetidoEsperandoTx     = make(map[string]int)
 	carteiras                  []*Carteira
 	mutex                      = &sync.Mutex{}
+	totalcart                  int
+	alvoBlocos                 int
 )
 
 func calculaHash(s string) string {
@@ -337,10 +339,7 @@ func salvaEstado() {
 
 func main() {
 	totalcart, _ = strconv.Atoi(os.Args[1])
-	dificuldade, _ = strconv.Atoi(os.Args[2])
-	malicious, _ = strconv.ParseBool(os.Args[3])
-	verbose, _ = strconv.Atoi(os.Args[4])
-	alvoBlocos, _ = strconv.Atoi(os.Args[5])
+	alvoBlocos, _ = strconv.Atoi(os.Args[2])
 	for i := 0; i < 150; i++ {
 		cart, _ := criaCarteira(true)
 		carteiras = append(carteiras, &cart)

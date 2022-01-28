@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -147,6 +148,9 @@ func escolheValidador() {
 			chooser, _ := wr.NewChooser(choices...)
 			novoBloco, _ := geraBloco(Blockchain[len(Blockchain)-1], chooser.Pick().(string), stakes[0:15])
 			_ = insertBloco(novoBloco)
+			if len(Blockchain)%100 == 0 {
+				salvaEstado()
+			}
 		}
 	}
 }
@@ -304,6 +308,19 @@ func startCarteiras() {
 			}
 		}
 	}
+}
+
+func salvaEstado() {
+	spew.Dump("Salvando... " + time.Now().Format("15:04:05"))
+	file1 := "./carteiras.json"
+	file4 := "./blockchain.json"
+
+	bytes1, _ := json.MarshalIndent(carteiras, "", "  ")
+	bytes4, _ := json.MarshalIndent(Blockchain, "", "  ")
+
+	_ = ioutil.WriteFile(file1, bytes1, 0644)
+	_ = ioutil.WriteFile(file4, bytes4, 0644)
+	spew.Dump("Salvo! " + time.Now().Format("15:04:05"))
 }
 
 func main() {

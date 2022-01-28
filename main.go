@@ -1,7 +1,9 @@
 package main
 
 import (
+	cr "crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -140,7 +142,6 @@ func escolheValidador() {
 
 		//escolhe um vencedor aleatório
 		if len(loteria) > 0 {
-			rand.Seed(time.Now().UTC().UnixNano())
 			var choices []wr.Choice
 			for k, v := range loteria {
 				choices = append(choices, wr.NewChoice(k, uint(v)))
@@ -176,7 +177,6 @@ func criaCarteira(inicial bool) (cart Carteira, ok bool) {
 }
 
 func (cart *Carteira) geraStake(carteiras []*Carteira) Stake {
-	rand.Seed(time.Now().UnixNano())
 	t := Stake{}
 	mutexValor.Lock()
 	c := carteiras[rand.Intn(len(carteiras))]
@@ -250,6 +250,15 @@ func run() error {
 	}
 
 	return nil
+}
+
+func init() {
+	var b [8]byte
+	_, err := cr.Read(b[:])
+	if err != nil {
+		panic("cannot seed math/rand package with cryptographically secure random number generator")
+	}
+	rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
 }
 
 //funcao que cria o roteador

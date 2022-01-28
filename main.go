@@ -340,7 +340,7 @@ func salvaEstado() {
 func main() {
 	totalcart, _ = strconv.Atoi(os.Args[1])
 	alvoBlocos, _ = strconv.Atoi(os.Args[2])
-	for i := 0; i < 150; i++ {
+	for i := 0; i < totalcart; i++ {
 		cart, _ := criaCarteira(true)
 		carteiras = append(carteiras, &cart)
 	}
